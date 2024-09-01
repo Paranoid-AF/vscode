@@ -296,16 +296,6 @@ const Extract_Interface = Object.freeze<CodeActionKind>({
 	matches: refactor => refactor.name.startsWith('Extract to interface')
 });
 
-const Move_File = Object.freeze<CodeActionKind>({
-	kind: vscode.CodeActionKind.RefactorMove.append('file'),
-	matches: refactor => refactor.name.startsWith('Move to file')
-});
-
-const Move_NewFile = Object.freeze<CodeActionKind>({
-	kind: vscode.CodeActionKind.RefactorMove.append('newFile'),
-	matches: refactor => refactor.name.startsWith('Move to a new file')
-});
-
 const Rewrite_Import = Object.freeze<CodeActionKind>({
 	kind: vscode.CodeActionKind.RefactorRewrite.append('import'),
 	matches: refactor => refactor.name.startsWith('Convert namespace import') || refactor.name.startsWith('Convert named imports')
@@ -336,8 +326,6 @@ const allKnownCodeActionKinds = [
 	Extract_Constant,
 	Extract_Type,
 	Extract_Interface,
-	Move_File,
-	Move_NewFile,
 	Rewrite_Import,
 	Rewrite_Export,
 	Rewrite_Arrow_Braces,
@@ -421,27 +409,6 @@ class InlinedCodeAction extends vscode.CodeAction {
 	}
 }
 
-class MoveToFileCodeAction extends vscode.CodeAction {
-	constructor(
-		document: vscode.TextDocument,
-		action: Proto.RefactorActionInfo,
-		range: vscode.Range,
-		trigger: vscode.CodeActionTriggerKind,
-	) {
-		super(action.description, Move_File.kind);
-
-		if (action.notApplicableReason) {
-			this.disabled = { reason: action.notApplicableReason };
-		}
-
-		this.command = {
-			title: action.description,
-			command: MoveToFileRefactorCommand.ID,
-			arguments: [{ action, document, range, trigger } satisfies MoveToFileRefactorCommand.Args]
-		};
-	}
-}
-
 class SelectCodeAction extends vscode.CodeAction {
 	constructor(
 		info: Proto.ApplicableRefactorInfo,
@@ -457,7 +424,7 @@ class SelectCodeAction extends vscode.CodeAction {
 		};
 	}
 }
-type TsCodeAction = InlinedCodeAction | MoveToFileCodeAction | SelectCodeAction;
+type TsCodeAction = InlinedCodeAction | SelectCodeAction;
 
 class TypeScriptRefactorProvider implements vscode.CodeActionProvider<TsCodeAction> {
 
@@ -498,6 +465,7 @@ class TypeScriptRefactorProvider implements vscode.CodeActionProvider<TsCodeActi
 
 	constructor(
 		private readonly client: ITypeScriptServiceClient,
+		// @ts-ignore
 		private readonly cachedNavTree: CachedResponse<Proto.NavTreeResponse>,
 		private readonly formattingOptionsManager: FormattingOptionsManager,
 		commandManager: CommandManager,
@@ -571,21 +539,6 @@ class TypeScriptRefactorProvider implements vscode.CodeActionProvider<TsCodeActi
 				}
 			}
 
-			// Don't include move actions on auto light bulb unless you are on a declaration name
-			if (this.client.apiVersion.lt(API.v540) && context.triggerKind === vscode.CodeActionTriggerKind.Automatic) {
-				if (action.kind?.value === Move_NewFile.kind.value || action.kind?.value === Move_File.kind.value) {
-					const file = this.client.toOpenTsFilePath(document);
-					if (!file) {
-						return undefined;
-					}
-
-					const navTree = await this.cachedNavTree.execute(document, () => this.client.execute('navtree', { file }, token));
-					if (navTree.type !== 'response' || !navTree.body || !TypeScriptRefactorProvider.isOnSignatureName(navTree.body, rangeOrSelection)) {
-						return undefined;
-					}
-				}
-			}
-
 			return action;
 		})));
 
@@ -649,11 +602,7 @@ class TypeScriptRefactorProvider implements vscode.CodeActionProvider<TsCodeActi
 		allActions: readonly Proto.RefactorActionInfo[],
 	): TsCodeAction[] {
 		const codeActions: TsCodeAction[] = [];
-		if (action.name === 'Move to file') {
-			codeActions.push(new MoveToFileCodeAction(document, action, rangeOrSelection, context.triggerKind));
-		} else {
-			codeActions.push(new InlinedCodeAction(this.client, document, refactor, action, rangeOrSelection, context.triggerKind));
-		}
+		codeActions.push(new InlinedCodeAction(this.client, document, refactor, action, rangeOrSelection, context.triggerKind));
 		for (const codeAction of codeActions) {
 			codeAction.isPreferred = TypeScriptRefactorProvider.isPreferred(action, allActions);
 		}
