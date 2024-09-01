@@ -9,7 +9,7 @@ import { basename } from 'path';
 import type * as ts from 'typescript/lib/tsserverlibrary';
 import { FileWatcherManager } from './fileWatcherManager';
 import { Logger } from './logging';
-import { PathMapper, looksLikeNodeModules, mapUri } from './pathMapper';
+import { PathMapper, looksLikeNodeModules, looksLikeLibDtsPath, mapUri } from './pathMapper';
 import { findArgument, hasArgument } from './util/args';
 import { URI } from 'vscode-uri';
 
@@ -107,7 +107,7 @@ function createServerHost(
 		readFile(path) {
 			logger.logVerbose('fs.readFile', { path });
 
-			if (!fs) {
+			if (!fs || looksLikeLibDtsPath(path) || path === '/typesMap.json') {
 				const webPath = getWebPath(path);
 				if (webPath) {
 					const request = new XMLHttpRequest();
@@ -197,7 +197,7 @@ function createServerHost(
 		fileExists(path: string): boolean {
 			logger.logVerbose('fs.fileExists', { path });
 
-			if (!fs) {
+			if (!fs || looksLikeLibDtsPath(path) || path === '/typesMap.json') {
 				const webPath = getWebPath(path);
 				if (!webPath) {
 					return false;
